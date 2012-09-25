@@ -93,8 +93,18 @@ void xnintr_host_tick(struct xnsched *sched) /* Interrupts off. */
 
 void xnintr_clock_handler(void)
 {
-	struct xnsched *sched = xnpod_current_sched();
 	xnstat_exectime_t *prev;
+	struct xnsched *sched;
+	unsigned cpu;
+
+	cpu = xnarch_current_cpu();
+
+	if (!cpumask_test_cpu(cpu, &xnarch_supported_cpus)) {
+		xnarch_relay_tick();
+		return;
+	}
+
+	sched = xnpod_sched_slot(cpu);
 
 	prev = xnstat_exectime_switch(sched,
 		&nkclock.stat[xnsched_cpu(sched)].account);
