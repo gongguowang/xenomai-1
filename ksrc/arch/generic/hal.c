@@ -56,8 +56,8 @@ unsigned long rthal_clockfreq_arg;
 module_param_named(clockfreq, rthal_clockfreq_arg, ulong, 0444);
 
 #ifdef CONFIG_SMP
-static unsigned long supported_cpus_arg = -1;
-module_param_named(supported_cpus, supported_cpus_arg, ulong, 0444);
+static char* supported_cpus_arg;
+module_param_named(supported_cpus, supported_cpus_arg, charp, 0444);
 
 cpumask_t rthal_supported_cpus;
 EXPORT_SYMBOL_GPL(rthal_supported_cpus);
@@ -535,12 +535,17 @@ static inline void cleanup_apc_handler(void) { }
 int rthal_init(void)
 {
     int err;
+    cpumask_t mask;
 #ifdef CONFIG_SMP
-    int cpu;
-    cpus_clear(rthal_supported_cpus);
-    for (cpu = 0; cpu < BITS_PER_LONG; cpu++)
-	    if (supported_cpus_arg & (1 << cpu))
-		    cpu_set(cpu, rthal_supported_cpus);
+    if (supported_cpus_arg) {
+        cpulist_parse(supported_cpus_arg, &mask);
+	if (!cpumask_and(&rthal_supported_cpus, &mask, cpu_present_mask)) {
+		printk(KERN_ERR "Specified cpu mask leaves nothing for Xenomai to run on. Aborting.\n");
+		return -ENODEV;	
+	}
+    }
+    else
+        cpumask_copy(&rthal_supported_cpus, cpu_present_mask);
 #endif /* CONFIG_SMP */
 
     err = rthal_arch_init();
