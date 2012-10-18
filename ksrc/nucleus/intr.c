@@ -39,7 +39,7 @@
 
 #define XNINTR_MAX_UNHANDLED	1000
 
-DEFINE_PRIVATE_XNLOCK(intrlock);
+static DEFINE_BINARY_SEMAPHORE(intrlock);
 
 #ifdef CONFIG_XENO_OPT_STATS
 xnintr_t nkclock;	     /* Only for statistics */
@@ -719,7 +719,6 @@ EXPORT_SYMBOL_GPL(xnintr_destroy);
 int xnintr_attach(xnintr_t *intr, void *cookie)
 {
 	int ret;
-	spl_t s;
 
 	trace_mark(xn_nucleus, irq_attach, "irq %u name %s",
 		   intr->irq, intr->name);
@@ -731,7 +730,7 @@ int xnintr_attach(xnintr_t *intr, void *cookie)
 	xnarch_set_irq_affinity(intr->irq, nkaffinity);
 #endif /* CONFIG_SMP */
 
-	xnlock_get_irqsave(&intrlock, s);
+	down(&intrlock);
 
 	if (__testbits(intr->flags, XN_ISR_ATTACHED)) {
 		ret = -EBUSY;
@@ -745,7 +744,7 @@ int xnintr_attach(xnintr_t *intr, void *cookie)
 	__setbits(intr->flags, XN_ISR_ATTACHED);
 	xnintr_stat_counter_inc();
 out:
-	xnlock_put_irqrestore(&intrlock, s);
+	up(&intrlock);
 
 	return ret;
 }
@@ -785,11 +784,10 @@ EXPORT_SYMBOL_GPL(xnintr_attach);
 int xnintr_detach(xnintr_t *intr)
 {
 	int ret;
-	spl_t s;
 
 	trace_mark(xn_nucleus, irq_detach, "irq %u", intr->irq);
 
-	xnlock_get_irqsave(&intrlock, s);
+	down(&intrlock);
 
 	if (!__testbits(intr->flags, XN_ISR_ATTACHED)) {
 		ret = -EINVAL;
@@ -804,7 +802,7 @@ int xnintr_detach(xnintr_t *intr)
 
 	xnintr_stat_counter_dec();
  out:
-	xnlock_put_irqrestore(&intrlock, s);
+	up(&intrlock);
 
 	return ret;
 }
@@ -930,13 +928,12 @@ int xnintr_query_next(int irq, xnintr_iterator_t *iterator, char *name_buf)
 	xnticks_t last_switch;
 	int cpu_no = iterator->cpu + 1;
 	int err = 0;
-	spl_t s;
 
 	if (cpu_no == xnarch_num_online_cpus())
 		cpu_no = 0;
 	iterator->cpu = cpu_no;
 
-	xnlock_get_irqsave(&intrlock, s);
+	down(&intrlock);
 
 	if (iterator->list_rev != xnintr_list_rev) {
 		err = -EAGAIN;
@@ -979,7 +976,7 @@ int xnintr_query_next(int irq, xnintr_iterator_t *iterator, char *name_buf)
 		iterator->prev = intr;
 
      unlock_and_exit:
-	xnlock_put_irqrestore(&intrlock, s);
+	up(&intrlock);
 
 	return err;
 }
@@ -993,7 +990,6 @@ static inline int format_irq_proc(unsigned int irq,
 				  struct xnvfile_regular_iterator *it)
 {
 	struct xnintr *intr;
-	spl_t s;
 
 	if (irq == XNARCH_TIMER_IRQ) {
 		xnvfile_puts(it, "         [timer]");
@@ -1015,7 +1011,7 @@ static inline int format_irq_proc(unsigned int irq,
 		return 0;
 	}
 
-	xnlock_get_irqsave(&intrlock, s);
+	down(&intrlock);
 
 	intr = xnintr_shirq_first(irq);
 	if (intr) {
@@ -1028,7 +1024,7 @@ static inline int format_irq_proc(unsigned int irq,
 		} while (intr);
 	}
 
-	xnlock_put_irqrestore(&intrlock, s);
+	up(&intrlock);
 
 	return 0;
 }
